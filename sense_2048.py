@@ -1,4 +1,3 @@
-import copy
 import random
 
 
@@ -39,21 +38,25 @@ class Board:
 
     def _transformed_tiles(self, tiles, direction):
         if direction == 'left':
-            return self._htransformed(tiles, False)
+            return [row.copy() for row in tiles]
         if direction == 'right':
-            return self._htransformed(tiles, True)
+            return [list(reversed(row)) for row in tiles]
         if direction == 'up':
-            return self._vtransformed(tiles, False)
+            return [row for row in transposed(tiles)]
         if direction == 'down':
-            return self._vtransformed(tiles, True)
+            return [list(reversed(row)) for row in transposed(tiles)]
         raise ValueError('Unrecognized direction')
 
-    def _htransformed(self, tiles, reverse):
-        return [row.copy() if not reverse else list(reversed(row))
-                for row in tiles]
-
-    def _vtransformed(self, tiles, reverse):
-        return self._htransformed(transposed(tiles), reverse)
+    def _untransformed_tiles(self, tiles, direction):
+        # Untransformation works by reapplying the original
+        # transformation for all directions except “down”. The “down”
+        # transformation applies both transposition and row reversal of
+        # the grid, in that order, but in order to correctly reverse
+        # this those two operations must be applied in the *opposite*
+        # order, hence the special case here.
+        if direction == 'down':
+            return transposed([list(reversed(row)) for row in tiles])
+        return self._transformed_tiles(tiles, direction)
 
 
 board = Board()
