@@ -2,6 +2,8 @@ import random
 
 
 TILE_EMPTY = 0
+TILE_2 = 1
+TILE_4 = 2
 
 
 def transposed(matrix):
@@ -13,7 +15,7 @@ def transposed(matrix):
 
 class Board:
     size = 4
-    new_tile_vals = [2, 4]
+    new_tile_vals = [TILE_2, TILE_4]
 
     def __init__(self):
         self._tiles = [[0] * self.size for _ in range(self.size)]
@@ -58,7 +60,41 @@ class Board:
             return transposed([list(reversed(row)) for row in tiles])
         return self._transformed_tiles(tiles, direction)
 
+    def shift(self, direction):
+        tiles = self._transformed_tiles(self._tiles, direction)
+        tiles = [self._shifted_row(row) for row in tiles]
+        self._tiles = self._untransformed_tiles(tiles, direction)
+
+    def _shifted_row(self, row):
+        row = row.copy()
+        while TILE_EMPTY in row:
+            row.remove(TILE_EMPTY)
+        return row + [TILE_EMPTY] * (self.size - len(row))
+
+    def merge(self, direction):
+        tiles = self._transformed_tiles(self._tiles, direction)
+        tiles = [self._merged_row(row) for row in tiles]
+        self._tiles = self._untransformed_tiles(tiles, direction)
+
+    def _merged_row(self, row):
+        row = row.copy()
+        for i in range(len(row) - 1):
+            if row[i] == row[i+1] and row[i] != TILE_EMPTY:
+                row[i] += 1
+                row[i+1] = TILE_EMPTY
+        return row
+
+    def move(self, direction):
+        self.shift(direction)
+        self.merge(direction)
+        self.shift(direction)
+        self.place_tile()
+        print(self, end='\n\n')
+
 
 board = Board()
 for _ in range(8):
     board.place_tile()
+print(board, end='\n\n')
+board.shift('left')
+print(board)
