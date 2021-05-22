@@ -1,7 +1,17 @@
+import copy
 import random
 
 
 TILE_EMPTY = 0
+
+TILE_COLORS = {
+    TILE_EMPTY: (0, 0, 0),
+    2: (255, 255, 255),
+    4: (255, 255, 127),
+    8: (255, 255, 0),
+    16: (255, 127, 0),
+    32: (255, 0, 0),
+}
 
 
 def transposed(matrix):
@@ -23,6 +33,9 @@ class Board:
         for row in self._tiles:
             str_.append(str(row))
         return '\n'.join(str_)
+
+    def get_tiles(self):
+        return copy.deepcopy(self._tiles)
 
     def place_tile(self):
         new_row, new_col = random.choice(self._get_empty_tiles())
@@ -88,6 +101,19 @@ class Board:
         self.shift(direction)
         self.place_tile()
         print(self, end='\n\n')
+
+
+def render_board(sense_hat, board):
+    def on_screen_tile_coords(origin_x, origin_y):
+        yield origin_x, origin_y
+        yield origin_x + 1, origin_y
+        yield origin_x, origin_y + 1
+        yield origin_x + 1, origin_y + 1
+
+    for row_ix, row in enumerate(board.get_tiles()):
+        for tile_ix, tile in enumerate(row):
+            for x, y in on_screen_tile_coords(tile_ix * 2, row_ix * 2):
+                sense_hat.set_pixel(x, y, TILE_COLORS[tile])
 
 
 board = Board()
