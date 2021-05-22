@@ -2,8 +2,6 @@ import random
 
 
 TILE_EMPTY = 0
-TILE_2 = 1
-TILE_4 = 2
 
 
 def transposed(matrix):
@@ -15,10 +13,10 @@ def transposed(matrix):
 
 class Board:
     size = 4
-    new_tile_vals = [TILE_2, TILE_4]
+    new_tile_vals = [2, 4]
 
     def __init__(self):
-        self._tiles = [[0] * self.size for _ in range(self.size)]
+        self._tiles = [[TILE_EMPTY] * self.size for _ in range(self.size)]
 
     def __str__(self):
         str_ = []
@@ -80,7 +78,7 @@ class Board:
         row = row.copy()
         for i in range(len(row) - 1):
             if row[i] == row[i+1] and row[i] != TILE_EMPTY:
-                row[i] += 1
+                row[i] *= 2
                 row[i+1] = TILE_EMPTY
         return row
 
