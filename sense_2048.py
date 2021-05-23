@@ -78,9 +78,9 @@ class Board:
 
 class UI:
 
-    shift_animation_rate = 1 / 20
+    shift_animation_rate = 1 / 60
 
-    fade_animation_rate = 1 / 20
+    fade_animation_rate = 1 / 60
 
     fade_animation_steps = 8
     
