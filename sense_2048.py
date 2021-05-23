@@ -142,6 +142,13 @@ class UI:
             display = np.rint(display).astype(np.uint16)
             self._sense_hat.set_pixels(self._array_to_pixels(display))
             time.sleep(self.fade_animation_rate)
+
+    def get_input(self):
+        while True:
+            event = self._sense_hat.stick.wait_for_event()
+            if (event.action == 'pressed'
+                    and event.direction in ['left', 'right', 'up', 'down']):
+                return event.direction
         
 
 if __name__ == '__main__':
@@ -150,3 +157,6 @@ if __name__ == '__main__':
     ui = UI(hat, board)
     board.place_tile()
     ui.render_board()
+    while True:
+        direction = ui.get_input()
+        ui.shift(direction)
