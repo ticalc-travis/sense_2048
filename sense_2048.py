@@ -70,25 +70,45 @@ class Board:
 
 class UI:
 
-    shift_animation_rate = 0.05
+    shift_animation_rate = 1 / 20
+
+    fade_animation_rate = 1 / 20
+
+    fade_animation_steps = 8
     
     def __init__(self, sense_hat, board):
         self._sense_hat = sense_hat
         self._board = board
 
+    @staticmethod
+    def _pixels_to_array(pixels):
+        return np.reshape(np.array(pixels), (8, 8, 3)).astype(np.uint16)
+
+    @staticmethod
+    def _array_to_pixels(array):
+        return [tuple(pixel) for row in array for pixel in row]
+
+    def _tiles_to_pixels(self, tiles):
+        scaled = tiles.repeat(2, axis=0).repeat(2, axis=1)
+        return [TILE_COLORS[tile] for row in scaled for tile in row]
+
     def render_board(self):
-        scaled = self._board.tiles.repeat(2, axis=0).repeat(2, axis=1)
-        pixels = [TILE_COLORS[tile] for row in scaled for tile in row]
-        self._sense_hat.set_pixels(pixels)
+        self._sense_hat.set_pixels(self._tiles_to_pixels(self._board.tiles))
 
     def shift(self, direction):
         self._animate_shift(direction)
         self._board.shift(direction)
+        orig_tiles = self._board.tiles.copy()
+        self._board.merge(direction)
+        if not np.array_equal(orig_tiles, self._board.tiles):
+            self._animate_changed(orig_tiles, self._board.tiles)
+        self._animate_shift(direction)
+        self._board.shift(direction)
+        self._board.place_tile()
+        self._fade_to(self._pixels_to_array(self._tiles_to_pixels(self._board.tiles)))
 
     def _animate_shift(self, direction):
-        display = np.reshape(
-            np.array(self._sense_hat.get_pixels()), (8, 8, 3)
-        )
+        display = self._pixels_to_array(self._sense_hat.get_pixels())
         while True:
             new_display = np.rot90(display.copy(), ROTATIONS[direction])
 
@@ -98,15 +118,31 @@ class UI:
                         row[[j, j+1]] = row[[j+1, j]]
 
             new_display = np.rot90(new_display, -ROTATIONS[direction])
-            print(display)
-            print(new_display)
             if np.array_equal(new_display, display):
                 break
             self._sense_hat.set_pixels(
-                [tuple(pixel) for row in new_display for pixel in row])
+                self._array_to_pixels(new_display))
             time.sleep(self.shift_animation_rate)
             display = new_display
-    
+
+    def _animate_changed(self, old_tiles, new_tiles):
+        old_display = self._pixels_to_array(self._tiles_to_pixels(old_tiles))
+        faded_display = self._pixels_to_array(self._tiles_to_pixels(
+            (old_tiles == new_tiles) * old_tiles
+        ))
+        new_display = self._pixels_to_array(self._tiles_to_pixels(new_tiles))
+        self._fade_to(faded_display)
+        self._fade_to(new_display)
+
+    def _fade_to(self, new_display):
+        orig_display = self._pixels_to_array(self._sense_hat.get_pixels())
+        for step in range(self.fade_animation_steps + 1):
+            display = (orig_display * (1 - (step / self.fade_animation_steps)) +
+                       new_display * (step / self.fade_animation_steps))
+            display = np.rint(display).astype(np.uint16)
+            self._sense_hat.set_pixels(self._array_to_pixels(display))
+            time.sleep(self.fade_animation_rate)
+        
 
 if __name__ == '__main__':
     board = Board()
@@ -114,4 +150,3 @@ if __name__ == '__main__':
     ui = UI(hat, board)
     board.place_tile()
     ui.render_board()
-    
