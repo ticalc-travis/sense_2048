@@ -1,8 +1,10 @@
+#!/usr/bin/env python3
+
 import random
 import time
 
 import numpy as np
-from sense_emu import sense_hat
+from sense_hat import sense_hat
 
 
 TILE_EMPTY = 0
