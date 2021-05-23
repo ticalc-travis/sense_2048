@@ -146,9 +146,11 @@ class UI:
     def get_input(self):
         while True:
             event = self._sense_hat.stick.wait_for_event()
-            if (event.action == 'pressed'
-                    and event.direction in ['left', 'right', 'up', 'down']):
-                return event.direction
+            if event.action == 'pressed':
+                if event.direction in ['left', 'right', 'up', 'down']:
+                    return event.direction
+                elif event.direction == 'middle':
+                    self._sense_hat.low_light = not self._sense_hat.low_light
         
 
 if __name__ == '__main__':
