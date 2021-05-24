@@ -50,8 +50,12 @@ class Board:
 
     def place_tile(self):
         new_tile = random.choice(self.new_tile_vals)
-        coord = tuple(random.choice(np.argwhere(self._tiles == TILE_EMPTY)))
-        self._tiles[coord] = new_tile
+        try:
+            coord = tuple(random.choice(np.argwhere(self._tiles == TILE_EMPTY)))
+        except IndexError:
+            pass
+        else:
+            self._tiles[coord] = new_tile
 
     def shift(self, direction):
         tiles = np.rot90(self._tiles, ROTATIONS[direction])
