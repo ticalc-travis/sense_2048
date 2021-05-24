@@ -9,6 +9,7 @@ from sense_hat import sense_hat
 
 TILE_EMPTY = 0
 
+
 TILE_COLORS = {
     TILE_EMPTY: (0, 0, 0),
     2: (255, 255, 255),
@@ -40,7 +41,8 @@ class Board:
     new_tile_vals = [2, 4]
 
     def __init__(self):
-        self._tiles = np.zeros((self.size, self.size), dtype=np.int32) + TILE_EMPTY
+        self._tiles = np.full((self.size, self.size), TILE_EMPTY)
+        self.place_tile()
 
     @property
     def tiles(self):
@@ -48,8 +50,8 @@ class Board:
 
     def place_tile(self):
         new_tile = random.choice(self.new_tile_vals)
-        coord = random.choice(np.argwhere(self._tiles == TILE_EMPTY))
-        self._tiles[tuple(coord)] = new_tile
+        coord = tuple(random.choice(np.argwhere(self._tiles == TILE_EMPTY)))
+        self._tiles[coord] = new_tile
 
     def shift(self, direction):
         tiles = np.rot90(self._tiles, ROTATIONS[direction])
@@ -68,13 +70,6 @@ class Board:
                     row[i+1] = TILE_EMPTY
         self._tiles = np.rot90(tiles, -ROTATIONS[direction])
 
-    def move(self, direction):
-        self.shift(direction)
-        self.merge(direction)
-        self.shift(direction)
-        self.place_tile()
-        print(self._tiles)
-
 
 class UI:
 
@@ -87,67 +82,79 @@ class UI:
     def __init__(self, sense_hat, board):
         self._sense_hat = sense_hat
         self._board = board
+        self._fade_to(self._tiles_to_array(self._board.tiles))
 
     @staticmethod
     def _pixels_to_array(pixels):
-        return np.reshape(np.array(pixels), (8, 8, 3)).astype(np.uint16)
+        return np.reshape(np.array(pixels), (8, 8, 3)).astype(np.uint8)
 
     @staticmethod
     def _array_to_pixels(array):
         return [tuple(pixel) for row in array for pixel in row]
 
-    def _tiles_to_pixels(self, tiles):
+    @staticmethod
+    def _tiles_to_pixels(tiles):
         scaled = tiles.repeat(2, axis=0).repeat(2, axis=1)
         return [TILE_COLORS[tile] for row in scaled for tile in row]
 
-    def render_board(self):
-        self._sense_hat.set_pixels(self._tiles_to_pixels(self._board.tiles))
+    def _tiles_to_array(self, tiles):
+        return self._pixels_to_array(self._tiles_to_pixels(tiles))
 
     def shift(self, direction):
+        # Shift board tiles in the requested direction
         self._animate_shift(direction)
         self._board.shift(direction)
-        orig_tiles = self._board.tiles.copy()
+
+        # Merge any matching tiles and animate if anything changed
+        orig_tiles = self._board.tiles
         self._board.merge(direction)
         if not np.array_equal(orig_tiles, self._board.tiles):
             self._animate_changed(orig_tiles, self._board.tiles)
+
+        # Shift board again to fill in any leftover gaps
         self._animate_shift(direction)
         self._board.shift(direction)
+
+        # Finally, end the turn by placing a random tile on the board
+        # and fading it in
         self._board.place_tile()
-        self._fade_to(self._pixels_to_array(self._tiles_to_pixels(self._board.tiles)))
+        self._fade_to(self._tiles_to_array(self._board.tiles))
 
     def _animate_shift(self, direction):
         display = self._pixels_to_array(self._sense_hat.get_pixels())
         while True:
-            new_display = np.rot90(display.copy(), ROTATIONS[direction])
+            rotated_display = np.rot90(display.copy(), ROTATIONS[direction])
 
-            for row in new_display:
+            for row in rotated_display:
                 for j in range(len(row) - 1):
                     if np.array_equal(row[j], TILE_COLORS[TILE_EMPTY]):
                         row[[j, j+1]] = row[[j+1, j]]
 
-            new_display = np.rot90(new_display, -ROTATIONS[direction])
+            new_display = np.rot90(rotated_display, -ROTATIONS[direction])
             if np.array_equal(new_display, display):
                 break
-            self._sense_hat.set_pixels(
-                self._array_to_pixels(new_display))
-            time.sleep(self.shift_animation_rate)
+
+            self._sense_hat.set_pixels(self._array_to_pixels(new_display))
             display = new_display
+            time.sleep(self.shift_animation_rate)
 
     def _animate_changed(self, old_tiles, new_tiles):
-        old_display = self._pixels_to_array(self._tiles_to_pixels(old_tiles))
-        faded_display = self._pixels_to_array(self._tiles_to_pixels(
+        old_display = self._tiles_to_array(old_tiles)
+        faded_display = self._tiles_to_array(
             (old_tiles == new_tiles) * old_tiles
-        ))
-        new_display = self._pixels_to_array(self._tiles_to_pixels(new_tiles))
+        )
+        new_display = self._tiles_to_array(new_tiles)
         self._fade_to(faded_display)
         self._fade_to(new_display)
 
     def _fade_to(self, new_display):
         orig_display = self._pixels_to_array(self._sense_hat.get_pixels())
-        for step in range(self.fade_animation_steps + 1):
-            display = (orig_display * (1 - (step / self.fade_animation_steps)) +
-                       new_display * (step / self.fade_animation_steps))
-            display = np.rint(display).astype(np.uint16)
+        for step in range(self.fade_animation_steps):
+            new_display_opacity = (step + 1) / self.fade_animation_steps
+            display = np.rint(
+                (orig_display * (1 - new_display_opacity) +
+                 new_display * new_display_opacity)
+            ).astype(np.uint8)
             self._sense_hat.set_pixels(self._array_to_pixels(display))
             time.sleep(self.fade_animation_rate)
 
@@ -157,7 +164,7 @@ class UI:
             if event.action == 'pressed':
                 if event.direction in ['left', 'right', 'up', 'down']:
                     return event.direction
-                elif event.direction == 'middle':
+                if event.direction == 'middle':
                     self._sense_hat.low_light = not self._sense_hat.low_light
         
 
@@ -165,8 +172,6 @@ if __name__ == '__main__':
     board = Board()
     hat = sense_hat.SenseHat()
     ui = UI(hat, board)
-    board.place_tile()
-    ui.render_board()
     while True:
         direction = ui.get_input()
         ui.shift(direction)
