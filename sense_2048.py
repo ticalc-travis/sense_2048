@@ -86,23 +86,27 @@ class UI:
     def __init__(self, sense_hat, board):
         self._sense_hat = sense_hat
         self._board = board
-        self._fade_to(self._tiles_to_array(self._board.tiles))
+        self.show_board()
 
     @staticmethod
     def _pixels_to_array(pixels):
         return np.reshape(np.array(pixels), (8, 8, 3)).astype(np.uint8)
 
-    @staticmethod
-    def _array_to_pixels(array):
-        return [tuple(pixel) for row in array for pixel in row]
-
-    @staticmethod
-    def _tiles_to_pixels(tiles):
-        scaled = tiles.repeat(2, axis=0).repeat(2, axis=1)
-        return [TILE_COLORS[tile] for row in scaled for tile in row]
-
     def _tiles_to_array(self, tiles):
-        return self._pixels_to_array(self._tiles_to_pixels(tiles))
+        scaled = tiles.repeat(2, axis=0).repeat(2, axis=1)
+        raw_pixels = [TILE_COLORS[tile] for row in scaled for tile in row]
+        return self._pixels_to_array(raw_pixels)
+
+    def _get_display(self):
+        return self._pixels_to_array(self._sense_hat.get_pixels())
+
+    def _set_display(self, pixel_array):
+        self._sense_hat.set_pixels(
+            [tuple(pixel) for row in pixel_array for pixel in row]
+        )
+
+    def show_board(self):
+        self._fade_to(self._tiles_to_array(self._board.tiles))
 
     def shift(self, direction):
         # Shift board tiles in the requested direction
@@ -122,10 +126,10 @@ class UI:
         # Finally, end the turn by placing a random tile on the board
         # and fading it in
         self._board.place_tile()
-        self._fade_to(self._tiles_to_array(self._board.tiles))
+        self.show_board()
 
     def _animate_shift(self, direction):
-        display = self._pixels_to_array(self._sense_hat.get_pixels())
+        display = self._get_display()
         while True:
             rotated_display = np.rot90(display.copy(), ROTATIONS[direction])
 
@@ -138,7 +142,7 @@ class UI:
             if np.array_equal(new_display, display):
                 break
 
-            self._sense_hat.set_pixels(self._array_to_pixels(new_display))
+            self._set_display(new_display)
             display = new_display
             time.sleep(self.shift_animation_rate)
 
@@ -152,14 +156,14 @@ class UI:
         self._fade_to(new_display)
 
     def _fade_to(self, new_display):
-        orig_display = self._pixels_to_array(self._sense_hat.get_pixels())
+        orig_display = self._get_display()
         for step in range(self.fade_animation_steps):
             new_display_opacity = (step + 1) / self.fade_animation_steps
             display = np.rint(
-                (orig_display * (1 - new_display_opacity) +
-                 new_display * new_display_opacity)
+                orig_display * (1 - new_display_opacity)
+                 + new_display * new_display_opacity
             ).astype(np.uint8)
-            self._sense_hat.set_pixels(self._array_to_pixels(display))
+            self._set_display(display)
             time.sleep(self.fade_animation_rate)
 
     def get_input(self):
