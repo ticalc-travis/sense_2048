@@ -35,6 +35,24 @@ ROTATIONS = {
 
 
 class Board:
+    """Object representing the game board with its tiles.
+
+
+    Class properties:
+
+    size:  Number of tiles across each dimension of the board
+
+    new_tile_vals:  A list of possible tile values that will be randomly
+    selected and placed on the board at the beginning of each turn
+
+
+    Instance properties:
+
+    tiles:  A numpy array representing the tile spaces on the board.
+    (This returns a copy; mutation does not affect the instance's idea
+    of the board state.)  Tiles are indicated by ints representing the
+    tile's face value.  TILE_EMPTY indicates no tile in that space.
+    """
 
     size = 4
 
@@ -49,15 +67,22 @@ class Board:
         return self._tiles.copy()
 
     def place_tile(self):
+        """Place a randomly-selected tile in a random vacant space on the board
+        if space is available.
+        """
         new_tile = random.choice(self.new_tile_vals)
         try:
-            coord = tuple(random.choice(np.argwhere(self._tiles == TILE_EMPTY)))
+            coord = tuple(random.choice(
+                np.argwhere(self._tiles == TILE_EMPTY)))
         except IndexError:
             pass
         else:
             self._tiles[coord] = new_tile
 
     def shift(self, direction):
+        """Shift all tiles in the given direction 'up', 'down', 'left', or
+        'right' as far as possible.
+        """
         tiles = np.rot90(self._tiles, ROTATIONS[direction])
         for i, row in enumerate(tiles):
             tiles[i] = np.concatenate(
@@ -66,6 +91,11 @@ class Board:
         self._tiles = np.rot90(tiles, -ROTATIONS[direction])
 
     def merge(self, direction):
+        """Search for pairs of adjacent matching tiles that would bump against
+        each other if pushed in the given direction 'up', 'down',
+        'left', or 'right'; replace each such pair of tiles with a tile
+        of double the original value and an empty space.
+        """
         tiles = np.rot90(self._tiles, ROTATIONS[direction])
         for row in tiles:
             for i in range(len(row) - 1):
@@ -76,38 +106,70 @@ class Board:
 
 
 class UI:
+    """Handler for the overall user interface, including rendering the game
+    board to the Sense HAT LED array, animation, and collecting and
+    interpreting user input.
+
+
+    Class attributes:
+
+    shift_animation_rate:  Seconds to wait after each frame of the
+    tile-shift effect
+
+    fade_animation_rate:  Seconds to wait after each frame of the
+    tile-fade/display-dissolve effect
+
+    fade_animation_steps:  Number of frames to generate for the
+    tile-fade/dissolve effect
+    """
 
     shift_animation_rate = 1 / 60
 
     fade_animation_rate = 1 / 60
 
     fade_animation_steps = 8
-    
-    def __init__(self, sense_hat, board):
-        self._sense_hat = sense_hat
+
+    def __init__(self, hat, board):
+        """Args:
+        hat:  A SenseHat object
+        board:  A Board object
+        """
+        self._hat = hat
         self._board = board
         self.show_board()
 
     def _rendered_board(self, tiles):
+        # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
+        # representing the game board's tiles
+
         scaled = tiles.repeat(2, axis=0).repeat(2, axis=1)
         return np.array(
             [[TILE_COLORS[tile] for tile in row] for row in scaled],
             dtype=np.uint8)
 
     def _get_display(self):
+        # Retrieve display from Sense HAT, converted to Numpy 8×8×3
+        # array
+
         return np.reshape(
-            np.array(self._sense_hat.get_pixels()), (8, 8, 3)
+            np.array(self._hat.get_pixels()), (8, 8, 3)
         ).astype(np.uint8)
 
     def _set_display(self, pixel_array):
-        self._sense_hat.set_pixels(
+        # Send 8×8×3 pixel array to Sense HAT's LED matrix
+        self._hat.set_pixels(
             [tuple(pixel) for row in pixel_array for pixel in row]
         )
 
     def show_board(self):
+        """Display current state of game board on the Sense HAT."""
         self._fade_to(self._rendered_board(self._board.tiles))
 
-    def shift(self, direction):
+    def player_move(self, direction):
+        """Perform, animate, and render a complete move in the given direction
+        'up', 'down', 'left', or 'right', shifting and merging tiles and
+        placing and displaying a new random one.
+        """
         # Shift board tiles in the requested direction
         self._animate_shift(direction)
         self._board.shift(direction)
@@ -128,33 +190,50 @@ class UI:
         self.show_board()
 
     def _animate_shift(self, direction):
-        display = self._get_display()
-        while True:
-            rotated_display = np.rot90(display.copy(), ROTATIONS[direction])
+        # Visually shift the tiles on the HAT screen in the given
+        # direction.  This only affects the display; the underlying
+        # Board object should be sent its own shift command in order to
+        # ensure its tiles match the resulting screen state.
 
+        display = self._get_display()
+
+        while True:
+            # Slide pixels representing tiles over by one wherever there
+            # are empty pixels to slide into
+            rotated_display = np.rot90(display.copy(), ROTATIONS[direction])
             for row in rotated_display:
                 for j in range(len(row) - 1):
                     if np.array_equal(row[j], TILE_COLORS[TILE_EMPTY]):
                         row[[j, j+1]] = row[[j+1, j]]
-
             new_display = np.rot90(rotated_display, -ROTATIONS[direction])
+
+            # Keep going until no pixels have succeeded in moving any further
             if np.array_equal(new_display, display):
                 break
 
+            # Render frame to screen
             self._set_display(new_display)
             display = new_display
             time.sleep(self.shift_animation_rate)
 
     def _animate_changed(self, old_tiles, new_tiles):
+        # Given two arrays of board tiles, render a fade-out effect for
+        # the on-screen tiles that have changed between the arrays, then
+        # fade in the new tiles from new_tiles.
+
         old_display = self._rendered_board(old_tiles)
         faded_display = self._rendered_board(
             (old_tiles == new_tiles) * old_tiles
         )
         new_display = self._rendered_board(new_tiles)
+
         self._fade_to(faded_display)
         self._fade_to(new_display)
 
     def _fade_to(self, new_display):
+        # Perform a dissolve-type transition from the current HAT display
+        # contents to that of pixel array *new_display*.
+
         orig_display = self._get_display()
         for step in range(self.fade_animation_steps):
             new_display_opacity = (step + 1) / self.fade_animation_steps
@@ -167,13 +246,13 @@ class UI:
 
     def get_input(self):
         while True:
-            event = self._sense_hat.stick.wait_for_event()
+            event = self._hat.stick.wait_for_event()
             if event.action == 'pressed':
                 if event.direction in ['left', 'right', 'up', 'down']:
                     return event.direction
                 if event.direction == 'middle':
-                    self._sense_hat.low_light = not self._sense_hat.low_light
-        
+                    self._hat.low_light = not self._hat.low_light
+
 
 if __name__ == '__main__':
     board = Board()
@@ -181,4 +260,4 @@ if __name__ == '__main__':
     ui = UI(hat, board)
     while True:
         direction = ui.get_input()
-        ui.shift(direction)
+        ui.player_move(direction)
