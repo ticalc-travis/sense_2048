@@ -88,17 +88,16 @@ class UI:
         self._board = board
         self.show_board()
 
-    @staticmethod
-    def _pixels_to_array(pixels):
-        return np.reshape(np.array(pixels), (8, 8, 3)).astype(np.uint8)
-
-    def _tiles_to_array(self, tiles):
+    def _rendered_board(self, tiles):
         scaled = tiles.repeat(2, axis=0).repeat(2, axis=1)
-        raw_pixels = [TILE_COLORS[tile] for row in scaled for tile in row]
-        return self._pixels_to_array(raw_pixels)
+        return np.array(
+            [[TILE_COLORS[tile] for tile in row] for row in scaled],
+            dtype=np.uint8)
 
     def _get_display(self):
-        return self._pixels_to_array(self._sense_hat.get_pixels())
+        return np.reshape(
+            np.array(self._sense_hat.get_pixels()), (8, 8, 3)
+        ).astype(np.uint8)
 
     def _set_display(self, pixel_array):
         self._sense_hat.set_pixels(
@@ -106,7 +105,7 @@ class UI:
         )
 
     def show_board(self):
-        self._fade_to(self._tiles_to_array(self._board.tiles))
+        self._fade_to(self._rendered_board(self._board.tiles))
 
     def shift(self, direction):
         # Shift board tiles in the requested direction
@@ -147,11 +146,11 @@ class UI:
             time.sleep(self.shift_animation_rate)
 
     def _animate_changed(self, old_tiles, new_tiles):
-        old_display = self._tiles_to_array(old_tiles)
-        faded_display = self._tiles_to_array(
+        old_display = self._rendered_board(old_tiles)
+        faded_display = self._rendered_board(
             (old_tiles == new_tiles) * old_tiles
         )
-        new_display = self._tiles_to_array(new_tiles)
+        new_display = self._rendered_board(new_tiles)
         self._fade_to(faded_display)
         self._fade_to(new_display)
 
