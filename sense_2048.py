@@ -37,15 +37,6 @@ ROTATIONS = {
 class Board:
     """Object representing the game board with its tiles.
 
-
-    Class properties:
-
-    size:  Number of tiles across each dimension of the board
-
-    new_tile_vals:  A list of possible tile values that will be randomly
-    selected and placed on the board at the beginning of each turn
-
-
     Instance properties:
 
     tiles:  A numpy array representing the tile spaces on the board.
@@ -54,12 +45,18 @@ class Board:
     tile's face value.  TILE_EMPTY indicates no tile in that space.
     """
 
-    size = 4
+    def __init__(self, size=4, new_tile_vals=(2, 4)):
+        """Args:
+        
+        size:  Number of tiles across each dimension of the board
 
-    new_tile_vals = [2, 4]
-
-    def __init__(self):
-        self._tiles = np.full((self.size, self.size), TILE_EMPTY)
+        new_tile_vals:  A list of possible tile values that will be
+        randomly selected and placed on the board at the beginning of
+        each turn
+        """
+        self._size = size
+        self._new_tile_vals = new_tile_vals
+        self._tiles = np.full((self._size, self._size), TILE_EMPTY)
         self.place_tile()
 
     @property
@@ -70,7 +67,7 @@ class Board:
         """Place a randomly-selected tile in a random vacant space on the board
         if space is available.
         """
-        new_tile = random.choice(self.new_tile_vals)
+        new_tile = random.choice(self._new_tile_vals)
         try:
             coord = tuple(random.choice(
                 np.argwhere(self._tiles == TILE_EMPTY)))
