@@ -101,6 +101,20 @@ class Board:
                     row[i+1] = TILE_EMPTY
         self._tiles = np.rot90(tiles, -ROTATIONS[direction])
 
+    def has_moves(self):
+        """Return True if legal moves are possible, False if there are no moves
+        left and the game is over.
+        """
+        # Moving is possible if there are vacant spaces on the board
+        if np.any(self._tiles == TILE_EMPTY):
+            return True
+        # Otherwise, moving is only possible as long as any two adjacent
+        # horizontal or vertical tiles match
+        return (
+            np.any(self._tiles[:, :-1] == self._tiles[:, 1:])     # Horizontal
+            or np.any(self._tiles[:-1, :] == self._tiles[1:, :])  # Vertical
+        )
+
 
 class UI:
     """Handler for the overall user interface, including rendering the game
@@ -258,3 +272,5 @@ if __name__ == '__main__':
     while True:
         direction = ui.get_input()
         ui.player_move(direction)
+        if not board.has_moves():
+            print('Game over!')
