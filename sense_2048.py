@@ -270,6 +270,10 @@ class UI:
             time.sleep(self.fade_animation_rate)
 
     def get_input(self):
+        # Purge queue of any accidental joystick inputs made previously
+        # before we wait for a fresh input
+        self._hat.stick.get_events()
+
         while True:
             event = self._hat.stick.wait_for_event()
             if event.action == 'pressed':
