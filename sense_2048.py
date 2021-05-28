@@ -135,28 +135,18 @@ class UI:
 
     Class attributes:
 
-    shift_animation_rate:  Seconds to wait after each frame of the
-    tile-shift effect
-
-    fade_animation_rate:  Seconds to wait after each frame of the
-    tile-fade/display-dissolve effect
+    animation_rate:  Seconds to wait after each frame of a visual
+    animation effect
 
     fade_animation_steps:  Number of frames to generate for the
     tile-fade/dissolve effect
 
-    dots_animation_rate:  Seconds to wait after each frame of the
-    random-dots fade effect
-
     scroll_rate:  Text scroll speed for SenseHAT.show_message()
     """
 
-    shift_animation_rate = 1 / 60
-
-    fade_animation_rate = 1 / 60
+    animation_rate = 1 / 60
 
     fade_animation_steps = 8
-
-    dots_animation_rate = 1 / 60
 
     scroll_rate = 1 / 18
 
@@ -250,7 +240,7 @@ class UI:
             # Render frame to screen
             self._set_display(new_display)
             display = new_display
-            time.sleep(self.shift_animation_rate)
+            time.sleep(self.animation_rate)
 
     def _animate_changed(self, old_tiles, new_tiles):
         # Given two arrays of board tiles, render a fade-out effect for
@@ -283,7 +273,7 @@ class UI:
                  + new_display * new_display_opacity
             ).astype(np.uint8)
             self._set_display(display)
-            time.sleep(self.fade_animation_rate)
+            time.sleep(self.animation_rate)
 
     def _fade_dots(self):
         # Turn off all pixels on the HAT in a shuffled sequence
@@ -291,7 +281,7 @@ class UI:
         random.shuffle(coords)
         for coord in coords:
             self._hat.set_pixel(*coord, (0, 0, 0))
-            time.sleep(self.dots_animation_rate)
+            time.sleep(self.animation_rate)
 
     def get_input(self):
         """Wait for an input event and return it as a string: 'up, 'down',
