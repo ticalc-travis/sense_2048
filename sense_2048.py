@@ -151,17 +151,19 @@ class UI:
 
     fade_animation_steps = 8
 
-    def __init__(self, hat, board):
+    def __init__(self, hat):
         """Args:
         hat:  A SenseHat object
         board:  A Board object
         """
         self._hat = hat
-        self._board = board
 
+        self.restart()
+
+    def restart(self):
+        """Reset the board and start a new game."""
+        self._board = Board()
         self.score = 0
-
-        self.show_board()
 
     def _rendered_board(self, tiles):
         # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
@@ -270,6 +272,9 @@ class UI:
             time.sleep(self.fade_animation_rate)
 
     def get_input(self):
+        """Wait for an input event and return it as a string: 'up, 'down',
+        'left', 'right'
+        """
         # Purge queue of any accidental joystick inputs made previously
         # before we wait for a fresh input
         self._hat.stick.get_events()
@@ -282,14 +287,15 @@ class UI:
                 if event.direction == 'middle':
                     self._hat.low_light = not self._hat.low_light
 
+    def main(self):
+        """Perform input/processing/output loop for main game"""
+        self.show_board()
+        while True:
+            direction = self.get_input()
+            self.player_move(direction)
+
 
 if __name__ == '__main__':
-    board = Board()
     hat = sense_hat.SenseHat()
-    ui = UI(hat, board)
-    while True:
-        direction = ui.get_input()
-        ui.player_move(direction)
-        print(ui.score)
-        if not board.has_moves():
-            print('Game over!')
+    ui = UI(hat)
+    ui.main()
