@@ -56,6 +56,7 @@ class Board:
         """
         self._size = size
         self._new_tile_vals = new_tile_vals
+
         self._tiles = np.full((self._size, self._size), TILE_EMPTY)
         self.place_tile()
 
@@ -91,15 +92,20 @@ class Board:
         """Search for pairs of adjacent matching tiles that would bump against
         each other if pushed in the given direction 'up', 'down',
         'left', or 'right'; replace each such pair of tiles with a tile
-        of double the original value and an empty space.
+        of double the original value and an empty space.  Return the
+        scoring value of the merges (the sum of all newly created
+        tiles).
         """
+        score = 0
         tiles = np.rot90(self._tiles, ROTATIONS[direction])
         for row in tiles:
             for i in range(len(row) - 1):
                 if row[i] == row[i+1] and row[i] != TILE_EMPTY:
-                    row[i] *= 2
-                    row[i+1] = TILE_EMPTY
+                    new_tile = row[i] * 2
+                    score += new_tile
+                    row[i], row[i+1] = new_tile, TILE_EMPTY
         self._tiles = np.rot90(tiles, -ROTATIONS[direction])
+        return score
 
     def has_moves(self):
         """Return True if legal moves are possible, False if there are no moves
@@ -120,6 +126,11 @@ class UI:
     """Handler for the overall user interface, including rendering the game
     board to the Sense HAT LED array, animation, and collecting and
     interpreting user input.
+
+
+    Instance attributes:
+
+    score:  Player's current score
 
 
     Class attributes:
@@ -147,6 +158,9 @@ class UI:
         """
         self._hat = hat
         self._board = board
+
+        self.score = 0
+
         self.show_board()
 
     def _rendered_board(self, tiles):
@@ -187,7 +201,7 @@ class UI:
 
         # Merge any matching tiles and animate if anything changed
         orig_tiles = self._board.tiles
-        self._board.merge(direction)
+        self.score += self._board.merge(direction)
         if not np.array_equal(orig_tiles, self._board.tiles):
             self._animate_changed(orig_tiles, self._board.tiles)
 
@@ -272,5 +286,6 @@ if __name__ == '__main__':
     while True:
         direction = ui.get_input()
         ui.player_move(direction)
+        print(ui.score)
         if not board.has_moves():
             print('Game over!')
