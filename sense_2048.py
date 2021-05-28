@@ -143,6 +143,11 @@ class UI:
 
     fade_animation_steps:  Number of frames to generate for the
     tile-fade/dissolve effect
+
+    dots_animation_rate:  Seconds to wait after each frame of the
+    random-dots fade effect
+
+    scroll_rate:  Text scroll speed for SenseHAT.show_message()
     """
 
     shift_animation_rate = 1 / 60
@@ -150,6 +155,10 @@ class UI:
     fade_animation_rate = 1 / 60
 
     fade_animation_steps = 8
+
+    dots_animation_rate = 1 / 60
+
+    scroll_rate = 1 / 18
 
     def __init__(self, hat):
         """Args:
@@ -257,6 +266,11 @@ class UI:
         self._fade_to(faded_display)
         self._fade_to(new_display)
 
+    def _flash(self):
+        # Briefly flash the screen
+        for _ in range(4):
+            self._fade_to((255, 255, 255) - self._get_display())
+
     def _fade_to(self, new_display):
         # Perform a dissolve-type transition from the current HAT display
         # contents to that of pixel array *new_display*.
@@ -270,6 +284,14 @@ class UI:
             ).astype(np.uint8)
             self._set_display(display)
             time.sleep(self.fade_animation_rate)
+
+    def _fade_dots(self):
+        # Turn off all pixels on the HAT in a shuffled sequence
+        coords = list([(x // 8, x % 8) for x in range(64)])
+        random.shuffle(coords)
+        for coord in coords:
+            self._hat.set_pixel(*coord, (0, 0, 0))
+            time.sleep(self.dots_animation_rate)
 
     def get_input(self):
         """Wait for an input event and return it as a string: 'up, 'down',
@@ -289,13 +311,33 @@ class UI:
 
     def main(self):
         """Perform input/processing/output loop for main game"""
-        self.show_board()
         while True:
-            direction = self.get_input()
-            self.player_move(direction)
+            self.show_board()
+            while self._board.has_moves():
+                direction = self.get_input()
+                self.player_move(direction)
+            self.game_over()
+            self.get_input()
+            self.restart()
+
+    def game_over(self):
+        self._flash()
+        time.sleep(1)
+        self._fade_dots()
+
+        text_color = TILE_COLORS[np.max(self._board.tiles)]
+        message = 'Game over! Your score: {}'.format(self.score)
+        print(message)
+        self._hat.show_message(
+            message, text_colour=text_color, scroll_speed=self.scroll_rate)
+
+        self.show_board()
 
 
 if __name__ == '__main__':
     hat = sense_hat.SenseHat()
     ui = UI(hat)
-    ui.main()
+    try:
+        ui.main()
+    except KeyboardInterrupt:
+        hat.clear()
