@@ -316,7 +316,7 @@ class UI:
         self._fade_dots()
 
         text_color = TILE_COLORS[np.max(self._board.tiles)]
-        message = 'Game over! Your score: {}'.format(self.score)
+        message = 'Game over! Score: {}'.format(self.score)
         print(message)
         self._hat.show_message(
             message, text_colour=text_color, scroll_speed=self.scroll_rate)
