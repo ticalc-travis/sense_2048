@@ -127,8 +127,13 @@ class Board:
 class TiltJoystick:
     """A class that senses directional tilting of the HAT and presents it as
     joystick-like input.  Once instantiated, an initial call to the
-    *enable* method must be made to start up the sensor input processing
-    before input events will be delivered.
+    *enable* method must be made to begin sensor input processing before
+    input events will be delivered.
+
+    It seems that the sensor reading and processing slows down other
+    Sense HAT operations such as display updates.  *disable()* and
+    *enable()* can be called to suspend and resume this processing as
+    needed.
     """
 
     def __init__(self, hat, sensitivity=0.4, hysteresis=0.2, delay=15):
@@ -156,8 +161,10 @@ class TiltJoystick:
         self.delay = delay
 
         self._event_queue = queue.SimpleQueue()
-        self._sensing_thread = None
-        self._terminate_event = threading.Event()
+        self._enabled_event = threading.Event()
+        self._sensing_thread = threading.Thread(
+            target=self._event_processor, daemon=True)
+        self._sensing_thread.start()
 
     def _event_processor(self):
         # This method is intended to be run as a worker thread.  It
@@ -179,7 +186,8 @@ class TiltJoystick:
 
         stable_count = {'x': 0, 'y': 0}
 
-        while not self._terminate_event.is_set():
+        while True:
+            self._enabled_event.wait()
             accel = self._hat.get_accelerometer_raw()
 
             for axis in ('x', 'y'):
@@ -221,22 +229,14 @@ class TiltJoystick:
                     last_stable_tilt[axis] = this_tilt[axis]
 
     def enable(self):
-        """Start the background sensor-processing thread and enable reading of
-        tilt events.
-        """
-        if self._sensing_thread is None:
-            self._terminate_event.clear()
-            self._sensing_thread = threading.Thread(
-                target=self._event_processor, daemon=True)
-            self._sensing_thread.start()
+        """Turn on reading and processing of tilt sensor events."""
+        self._enabled_event.set()
 
     def disable(self):
-        """Shut down the sensor-processing thread and input event generation.
+        """Pause processing of tilt sensor events, leaving full bandwidth for
+        other Sense HAT tasks such as LED array updating.
         """
-        self._terminate_event.set()
-        if self._sensing_thread is not None:
-            self._sensing_thread.join()
-            self._sensing_thread = None
+        self._enabled_event.clear()
 
     def wait_for_event(self):
         """As with sense_hat's SenseHAT.stick API, wait until a directional
@@ -437,6 +437,7 @@ class UI:
         # before we wait for a fresh input
         self._hat.stick.get_events()
         if self._tilt is not None:
+            self._tilt.enable()
             self._tilt.get_events()
 
         while True:
@@ -446,6 +447,7 @@ class UI:
             for event in events:
                 if event.action == 'pressed':
                     if event.direction in ['left', 'right', 'up', 'down']:
+                        self._tilt.disable()
                         return event.direction
                     if event.direction == 'middle':
                         self._hat.low_light = not self._hat.low_light
