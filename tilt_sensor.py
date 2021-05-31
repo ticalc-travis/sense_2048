@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 
 import collections
+import queue
+import threading
 import time
 
 from sense_hat import SenseHat
 
 
+InputEvent = collections.namedtuple('InputEvent', ('timestamp', 'direction', 'action'))
+
+
 class TiltJoystick:
     """A class that senses directional tilting of the HAT and presents it as
-    joystick-like input.
+    joystick-like input.  Once instantiated, an initial call to the
+    *enable* method must be made to start up the sensor input processing
+    before input events will be delivered.
     """
 
     def __init__(self, hat, sensitivity=0.4, hysteresis=0.2, delay=15):
@@ -35,8 +42,12 @@ class TiltJoystick:
         self.hysteresis = hysteresis
         self.delay = delay
 
-    def _sensing_thread(self):
-        # This method is intended to be run as a daemon thread.  It
+        self._event_queue = queue.SimpleQueue()
+        self._sensing_thread = None
+        self._terminate_event = threading.Event()
+
+    def _event_processor(self):
+        # This method is intended to be run as a worker thread.  It
         # continuously reads the accelerometer and interprets the data,
         # adding directional “press” and “release” inputs to an event
         # queue as they're detected.
@@ -55,7 +66,7 @@ class TiltJoystick:
 
         stable_count = {'x': 0, 'y': 0}
 
-        while True:
+        while not self._terminate_event.is_set():
             accel = self._hat.get_accelerometer_raw()
 
             for axis in ('x', 'y'):
@@ -81,13 +92,65 @@ class TiltJoystick:
                 # appropriate “joystick” events to the queue
                 if stable_count[axis] == self.delay:
                     if last_stable_tilt[axis]:
-                        print('{} released'.format(last_stable_tilt[axis]))
+                        self._event_queue.put(
+                            InputEvent(timestamp=time.time(),
+                                       direction=last_stable_tilt[axis],
+                                       action='released')
+                        )
                     if this_tilt[axis]:
-                        print('{} pressed'.format(this_tilt[axis]))
+                        self._event_queue.put(
+                            InputEvent(timestamp=time.time(),
+                                       direction=this_tilt[axis],
+                                       action='pressed')
+                        )
                     last_stable_tilt[axis] = this_tilt[axis]
+
+    def enable(self):
+        """Start the background sensor-processing thread and enable reading of
+        tilt events.
+        """
+        if self._sensing_thread is None:
+            self._terminate_event.clear()
+            self._sensing_thread = threading.Thread(
+                target=self._event_processor, daemon=True)
+            self._sensing_thread.start()
+
+    def disable(self):
+        """Shut down the sensor-processing thread and input event generation.
+        """
+        self._terminate_event.set()
+        if self._sensing_thread is not None:
+            self._sensing_thread.join()
+            self._sensing_thread = None
+
+    def wait_for_event(self):
+        """As with sense_hat's SenseHAT.stick API, wait until a directional
+        event via tilt occurs, then return an InputEvent-compatible
+        namedtuple.
+
+        Warning:  This call will wait forever if the sensor processing
+        thread isn't running.  Be sure that enable() has been called
+        first.
+        """
+        return self._event_queue.get()
+
+    def get_events(self):
+        """Return a list of InputEvent tuples representing directional events
+        that have occurred since the last call to wait_for_event() or
+        get_events().
+        """
+        event_list = []
+        while True:
+            try:
+                event_list.append(self._event_queue.get_nowait())
+            except queue.Empty:
+                break
+        return event_list
 
 
 if __name__ == '__main__':
     hat = SenseHat()
-    ts = TiltSensor(hat)
-    ts.sense_loop()
+    tj = TiltJoystick(hat)
+    tj.enable()
+    while True:
+        print(tj.wait_for_event())
