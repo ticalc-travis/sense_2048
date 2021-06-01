@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+# FIXME:  Incomplete checking for self._tilt is None
+
+
+
+import contextlib
 import queue
 import random
 import threading
@@ -126,14 +131,14 @@ class Board:
 
 class TiltJoystick:
     """A class that senses directional tilting of the HAT and presents it as
-    joystick-like input.  Once instantiated, an initial call to the
-    *enable* method must be made to begin sensor input processing before
-    input events will be delivered.
+    joystick-like input.
 
     It seems that the sensor reading and processing slows down other
-    Sense HAT operations such as display updates.  *disable()* and
-    *enable()* can be called to suspend and resume this processing as
-    needed.
+    Sense HAT operations such as display updates.  The *enabled*
+    property can be set to disable or enable this processing as needed.
+    Setting it to True (the default) actively processes sensor input;
+    setting False suspends sensor reading and prevents recognition and
+    delivery of new input events until reenabled.
     """
 
     def __init__(self, hat, sensitivity=0.4, hysteresis=0.2, delay=15):
@@ -164,7 +169,9 @@ class TiltJoystick:
         self._enabled_event = threading.Event()
         self._sensing_thread = threading.Thread(
             target=self._event_processor, daemon=True)
+
         self._sensing_thread.start()
+        self.enabled = True
 
     def _event_processor(self):
         # This method is intended to be run as a worker thread.  It
@@ -228,15 +235,16 @@ class TiltJoystick:
                         )
                     last_stable_tilt[axis] = this_tilt[axis]
 
-    def enable(self):
-        """Turn on reading and processing of tilt sensor events."""
-        self._enabled_event.set()
+    @property
+    def enabled(self):
+        return self._enabled_event.is_set()
 
-    def disable(self):
-        """Pause processing of tilt sensor events, leaving full bandwidth for
-        other Sense HAT tasks such as LED array updating.
-        """
-        self._enabled_event.clear()
+    @enabled.setter
+    def enabled(self, value):
+        if value:
+            self._enabled_event.set()
+        else:
+            self._enabled_event.clear()
 
     def wait_for_event(self):
         """As with sense_hat's SenseHAT.stick API, wait until a directional
@@ -260,6 +268,23 @@ class TiltJoystick:
             except queue.Empty:
                 break
         return event_list
+
+
+@contextlib.contextmanager
+def motion_disabled(tilt_joystick):
+    """Context manager that allows for temporarily disabling a TiltJoystick
+    class.  The tilt joystick operation is disabled during the context
+    manager and then restored to its original state (whether enabled or
+    not) afterward.  This can be used to perform operations such as
+    display animations whose performance would be adversely affected by
+    the constant sensor reading.
+    """
+    was_enabled = tilt_joystick.enabled
+    tilt_joystick.enabled = False
+    try:
+        yield
+    finally:
+        tilt_joystick.enabled = was_enabled
 
 
 class UI:
@@ -301,8 +326,6 @@ class UI:
         self._hat = hat
         self._tilt = tilt_joystick
 
-        if self._tilt is not None:
-            self._tilt.enable()
         self.restart()
 
     def restart(self):
@@ -369,24 +392,25 @@ class UI:
 
         display = self._get_display()
 
-        while True:
-            # Slide pixels representing tiles over by one wherever there
-            # are empty pixels to slide into
-            rotated_display = np.rot90(display.copy(), ROTATIONS[direction])
-            for row in rotated_display:
-                for j in range(len(row) - 1):
-                    if np.array_equal(row[j], TILE_COLORS[TILE_EMPTY]):
-                        row[[j, j+1]] = row[[j+1, j]]
-            new_display = np.rot90(rotated_display, -ROTATIONS[direction])
+        with motion_disabled(self._tilt):
+            while True:
+                # Slide pixels representing tiles over by one wherever there
+                # are empty pixels to slide into
+                rotated_display = np.rot90(display.copy(), ROTATIONS[direction])
+                for row in rotated_display:
+                    for j in range(len(row) - 1):
+                        if np.array_equal(row[j], TILE_COLORS[TILE_EMPTY]):
+                            row[[j, j+1]] = row[[j+1, j]]
+                new_display = np.rot90(rotated_display, -ROTATIONS[direction])
 
-            # Keep going until no pixels have succeeded in moving any further
-            if np.array_equal(new_display, display):
-                break
+                # Keep going until no pixels have succeeded in moving any further
+                if np.array_equal(new_display, display):
+                    break
 
-            # Render frame to screen
-            self._set_display(new_display)
-            display = new_display
-            time.sleep(self.animation_rate)
+                # Render frame to screen
+                self._set_display(new_display)
+                display = new_display
+                time.sleep(self.animation_rate)
 
     def _animate_changed(self, old_tiles, new_tiles):
         # Given two arrays of board tiles, render a fade-out effect for
@@ -404,30 +428,34 @@ class UI:
 
     def _flash(self):
         # Briefly flash the screen
-        for _ in range(4):
-            self._fade_to((255, 255, 255) - self._get_display())
+        with motion_disabled(self._tilt):
+            for _ in range(4):
+                self._fade_to((255, 255, 255) - self._get_display())
 
     def _fade_to(self, new_display):
         # Perform a dissolve-type transition from the current HAT display
         # contents to that of pixel array *new_display*.
 
-        orig_display = self._get_display()
-        for step in range(self.fade_animation_steps):
-            new_display_opacity = (step + 1) / self.fade_animation_steps
-            display = np.rint(
-                orig_display * (1 - new_display_opacity)
-                 + new_display * new_display_opacity
-            ).astype(np.uint8)
-            self._set_display(display)
-            time.sleep(self.animation_rate)
+        with motion_disabled(self._tilt):
+            orig_display = self._get_display()
+            for step in range(self.fade_animation_steps):
+                new_display_opacity = (step + 1) / self.fade_animation_steps
+                display = np.rint(
+                    orig_display * (1 - new_display_opacity)
+                     + new_display * new_display_opacity
+                ).astype(np.uint8)
+                self._set_display(display)
+                time.sleep(self.animation_rate)
 
     def _fade_dots(self):
         # Turn off all pixels on the HAT in a shuffled sequence
-        coords = list([(x // 8, x % 8) for x in range(64)])
-        random.shuffle(coords)
-        for coord in coords:
-            self._hat.set_pixel(*coord, (0, 0, 0))
-            time.sleep(self.animation_rate)
+
+        with motion_disabled(self._tilt):
+            coords = list([(x // 8, x % 8) for x in range(64)])
+            random.shuffle(coords)
+            for coord in coords:
+                self._hat.set_pixel(*coord, (0, 0, 0))
+                time.sleep(self.animation_rate)
 
     def get_input(self):
         """Wait for an input event and return it as a string: 'up, 'down',
@@ -437,7 +465,6 @@ class UI:
         # before we wait for a fresh input
         self._hat.stick.get_events()
         if self._tilt is not None:
-            self._tilt.enable()
             self._tilt.get_events()
 
         while True:
@@ -447,7 +474,6 @@ class UI:
             for event in events:
                 if event.action == 'pressed':
                     if event.direction in ['left', 'right', 'up', 'down']:
-                        self._tilt.disable()
                         return event.direction
                     if event.direction == 'middle':
                         self._hat.low_light = not self._hat.low_light
