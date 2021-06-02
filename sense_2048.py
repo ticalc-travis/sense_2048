@@ -45,10 +45,10 @@ class Board:
     tile's face value.  TILE_EMPTY indicates no tile in that space.
     """
 
-    def __init__(self, size=4, new_tile_vals=(2, 4)):
+    def __init__(self, size=(4, 4), new_tile_vals=(2, 4)):
         """Args:
         
-        size:  Number of tiles across each dimension of the board
+        size:  Tuple representing the board dimensions (x,y)
 
         new_tile_vals:  A list of possible tile values that will be
         randomly selected and placed on the board at the beginning of
@@ -57,7 +57,7 @@ class Board:
         self._size = size
         self._new_tile_vals = new_tile_vals
 
-        self._tiles = np.full((self._size, self._size), TILE_EMPTY)
+        self._tiles = np.full(self._size, TILE_EMPTY)
         self.place_tile()
 
     @property
@@ -168,7 +168,8 @@ class UI:
         # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
         # representing the game board's tiles
 
-        scaled = tiles.repeat(2, axis=0).repeat(2, axis=1)
+        dim_x, dim_y = tiles.shape
+        scaled = tiles.repeat(8 / dim_x, axis=0).repeat(8 / dim_y, axis=1)
         return np.array(
             [[TILE_COLORS[tile] for tile in row] for row in scaled],
             dtype=np.uint8)
