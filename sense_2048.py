@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import collections
 import random
 import time
 import sys
@@ -61,8 +62,10 @@ class Board:
         self._size = size
         self._new_tile_vals = new_tile_vals
 
-        self.score = 0
         self._tiles = np.full(self._size, TILE_EMPTY)
+        self.score = 0
+        self._random = random.Random()
+
         self.place_tile()
 
     @property
@@ -73,9 +76,9 @@ class Board:
         """Place a randomly-selected tile in a random vacant space on the board
         if space is available.
         """
-        new_tile = random.choice(self._new_tile_vals)
+        new_tile = self._random.choice(self._new_tile_vals)
         try:
-            coord = tuple(random.choice(
+            coord = tuple(self._random.choice(
                 np.argwhere(self._tiles == TILE_EMPTY)))
         except IndexError:
             pass
@@ -124,6 +127,24 @@ class Board:
             or np.any(self._tiles[:-1, :] == self._tiles[1:, :])  # Vertical
         )
 
+    def get_state(self):
+        """Return an object representing the board and game state that can be
+        restored with *set_state()*.
+        """
+        return {
+            'tiles': self.tiles,
+            'score': self.score,
+            'random': self._random.getstate()
+        }
+
+    def set_state(self, state):
+        """Restore the internal board/game state with the state object retrieved
+        earlier from *get_state()*.
+        """
+        self._tiles = state['tiles']
+        self.score = state['score']
+        self._random.setstate(state['random'])
+
 
 class UI:
     """Handler for the overall user interface, including rendering the game
@@ -133,6 +154,12 @@ class UI:
 
     Class attributes:
 
+    undo_size:  Max number of consecutive moves that can be reversed
+    with the Undo command
+
+    joystick_hold_time:  Time in seconds a joystick button must be held
+    down to be considered a long-press
+
     animation_rate:  Seconds to wait after each frame of a visual
     animation effect
 
@@ -141,6 +168,10 @@ class UI:
 
     scroll_rate:  Text scroll speed for SenseHAT.show_message()
     """
+
+    undo_size = 4
+
+    joystick_hold_time = .5
 
     animation_rate = 1 / 60
 
@@ -160,6 +191,7 @@ class UI:
     def restart(self):
         """Reset the board and start a new game."""
         self._board = Board()
+        self._undo_stack = collections.deque(maxlen=self.undo_size)
 
     def _rendered_board(self, tiles):
         # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
@@ -194,6 +226,9 @@ class UI:
         'up', 'down', 'left', or 'right', shifting and merging tiles and
         placing and displaying a new random one.
         """
+        # Store current state in undo history
+        self._undo_stack.append(self._board.get_state())
+
         # Shift board tiles in the requested direction
         self._animate_shift(direction)
         self._board.shift(direction)
@@ -206,8 +241,7 @@ class UI:
         if not np.array_equal(orig_tiles, self._board.tiles):
             self._animate_changed(orig_tiles, self._board.tiles)
         if self._board.score != orig_score:
-            print('Your current score: {}'.format(self._board.score),
-                  end='\r', file=sys.stdout)
+            self._print_score()
 
         # Shift board again to fill in any leftover gaps
         self._animate_shift(direction)
@@ -217,6 +251,10 @@ class UI:
         # and fading it in
         self._board.place_tile()
         self.show_board()
+
+    def _print_score(self):
+        print('Your current score: {}'.format(self._board.score),
+              end='\r', file=sys.stdout)
 
     def _animate_shift(self, direction):
         # Visually shift the tiles on the HAT screen in the given
@@ -259,9 +297,9 @@ class UI:
         self._fade_to(faded_display)
         self._fade_to(new_display)
 
-    def _flash(self):
+    def _flash(self, times=2):
         # Briefly flash the screen
-        for _ in range(4):
+        for _ in range(times * 2):
             self._fade_to((255, 255, 255) - self._get_display())
 
     def _fade_to(self, new_display):
@@ -288,8 +326,10 @@ class UI:
 
     def get_input(self):
         """Wait for an input event and return it as a string: 'up, 'down',
-        'left', 'right'
+        'left', 'right', 'undo', 'brightness'
         """
+        middle_hold_start = None
+
         # Purge queue of any accidental joystick inputs made previously
         # before we wait for a fresh input
         self._hat.stick.get_events()
@@ -300,18 +340,41 @@ class UI:
                 if event.direction in ['left', 'right', 'up', 'down']:
                     return event.direction
                 if event.direction == 'middle':
-                    self._hat.low_light = not self._hat.low_light
+                    middle_hold_start = time.time()
+
+            if middle_hold_start is not None and event.direction == 'middle':
+                if (event.action == 'held' and
+                     event.timestamp - middle_hold_start > self.joystick_hold_time):
+                    middle_hold_start = None
+                    return 'undo'
+                elif event.action == 'released':
+                    middle_hold_start = None
+                    return 'brightness'
 
     def main(self):
         """Perform input/processing/output loop for main game"""
         while True:
             self.show_board()
             while self._board.has_moves():
-                direction = self.get_input()
-                self.player_move(direction)
+                self._handle_input(self.get_input())
             self.game_over()
             self.get_input()
             self.restart()
+
+    def _handle_input(self, input_event):
+        if input_event in ['left', 'right', 'up', 'down']:
+            self.player_move(input_event)
+        elif input_event == 'brightness':
+            self._hat.low_light = not self._hat.low_light
+        elif input_event == 'undo':
+            if self._undo_stack:
+                print('\nUndo!', file=sys.stdout)
+                self._board.set_state(self._undo_stack.pop())
+                self._print_score()
+                self.show_board()
+            else:
+                print("\nCan't undo", file=sys.stdout)
+                self._flash(1)
 
     def game_over(self):
         self._flash()
