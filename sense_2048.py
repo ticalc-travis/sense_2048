@@ -2,6 +2,7 @@
 
 import random
 import time
+import sys
 
 import numpy as np
 from sense_hat import sense_hat
@@ -197,11 +198,16 @@ class UI:
         self._animate_shift(direction)
         self._board.shift(direction)
 
-        # Merge any matching tiles and animate if anything changed
+        # Merge any matching tiles, animate if anything changed, and
+        # display current score on console
         orig_tiles = self._board.tiles
+        orig_score = self._board.score
         self._board.merge(direction)
         if not np.array_equal(orig_tiles, self._board.tiles):
             self._animate_changed(orig_tiles, self._board.tiles)
+        if self._board.score != orig_score:
+            print('Your current score: {}'.format(self._board.score),
+                  end='\r', file=sys.stdout)
 
         # Shift board again to fill in any leftover gaps
         self._animate_shift(direction)
@@ -313,10 +319,10 @@ class UI:
         self._fade_dots()
 
         text_color = TILE_COLORS[np.max(self._board.tiles)]
-        message = 'Game over! Score: {}'.format(self._board.score)
-        print(message)
-        self._hat.show_message(
-            message, text_colour=text_color, scroll_speed=self.scroll_rate)
+        print('\n\nGame over! Final score: {}\n\n'.format(self._board.score),
+              file=sys.stdout)
+        self._hat.show_message('Score: {}'.format(self._board.score),
+            text_colour=text_color, scroll_speed=self.scroll_rate)
 
         self.show_board()
 
