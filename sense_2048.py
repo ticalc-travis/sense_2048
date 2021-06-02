@@ -43,6 +43,9 @@ class Board:
     (This returns a copy; mutation does not affect the instance's idea
     of the board state.)  Tiles are indicated by ints representing the
     tile's face value.  TILE_EMPTY indicates no tile in that space.
+
+    score:  The game's current score, calculated as the sum of the
+    values of all tiles created through merging of two matching tiles
     """
 
     def __init__(self, size=(4, 4), new_tile_vals=(2, 4)):
@@ -57,6 +60,7 @@ class Board:
         self._size = size
         self._new_tile_vals = new_tile_vals
 
+        self.score = 0
         self._tiles = np.full(self._size, TILE_EMPTY)
         self.place_tile()
 
@@ -96,16 +100,14 @@ class Board:
         scoring value of the merges (the sum of all newly created
         tiles).
         """
-        score = 0
         tiles = np.rot90(self._tiles, ROTATIONS[direction])
         for row in tiles:
             for i in range(len(row) - 1):
                 if row[i] == row[i+1] and row[i] != TILE_EMPTY:
                     new_tile = row[i] * 2
-                    score += new_tile
+                    self.score += new_tile
                     row[i], row[i+1] = new_tile, TILE_EMPTY
         self._tiles = np.rot90(tiles, -ROTATIONS[direction])
-        return score
 
     def has_moves(self):
         """Return True if legal moves are possible, False if there are no moves
@@ -126,11 +128,6 @@ class UI:
     """Handler for the overall user interface, including rendering the game
     board to the Sense HAT LED array, animation, and collecting and
     interpreting user input.
-
-
-    Instance attributes:
-
-    score:  Player's current score
 
 
     Class attributes:
@@ -162,7 +159,6 @@ class UI:
     def restart(self):
         """Reset the board and start a new game."""
         self._board = Board()
-        self.score = 0
 
     def _rendered_board(self, tiles):
         # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
@@ -203,7 +199,7 @@ class UI:
 
         # Merge any matching tiles and animate if anything changed
         orig_tiles = self._board.tiles
-        self.score += self._board.merge(direction)
+        self._board.merge(direction)
         if not np.array_equal(orig_tiles, self._board.tiles):
             self._animate_changed(orig_tiles, self._board.tiles)
 
@@ -317,7 +313,7 @@ class UI:
         self._fade_dots()
 
         text_color = TILE_COLORS[np.max(self._board.tiles)]
-        message = 'Game over! Score: {}'.format(self.score)
+        message = 'Game over! Score: {}'.format(self._board.score)
         print(message)
         self._hat.show_message(
             message, text_colour=text_color, scroll_speed=self.scroll_rate)
