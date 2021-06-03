@@ -413,3 +413,4 @@ if __name__ == '__main__':
         ui.main()
     except KeyboardInterrupt:
         hat.clear()
+        print()
