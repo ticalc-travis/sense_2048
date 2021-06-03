@@ -206,33 +206,61 @@ class UI:
         self.board = Board()
         self._undo_stack = collections.deque(maxlen=self.undo_size)
 
-    def _rendered_board(self, tiles):
-        # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
-        # representing the game board's tiles
+    def main(self):
+        """Perform input/processing/output loop for main game"""
+        while True:
+            self.show_board()
+            while self.board.has_moves():
+                self.do_action(self.get_input())
+            self.game_over()
+            self.get_input()    # Pause for a joystick button press
+            self.new_game()
 
-        dim_x, dim_y = tiles.shape
-        scaled = tiles.repeat(8 / dim_x, axis=0).repeat(8 / dim_y, axis=1)
-        return np.array(
-            [[TILE_COLORS[tile] for tile in row] for row in scaled],
-            dtype=np.uint8)
+    def get_input(self):
+        """Wait for an input event and return an associated action command as a
+        string: 'up, 'down', 'left', 'right', 'undo', 'brightness'
+        """
+        middle_hold_start = None
 
-    def _get_display(self):
-        # Retrieve display from Sense HAT, converted to Numpy 8×8×3
-        # array
+        # Purge queue of any accidental joystick inputs made previously
+        # before we wait for a fresh input
+        self._hat.stick.get_events()
 
-        return np.reshape(
-            np.array(self._hat.get_pixels()), (8, 8, 3)
-        ).astype(np.uint8)
+        while True:
+            event = self._hat.stick.wait_for_event()
+            if event.action == 'pressed':
+                if event.direction in ['left', 'right', 'up', 'down']:
+                    return event.direction
+                if event.direction == 'middle':
+                    middle_hold_start = time.time()
 
-    def _set_display(self, pixel_array):
-        # Send 8×8×3 pixel array to Sense HAT's LED matrix
-        self._hat.set_pixels(
-            [tuple(pixel) for row in pixel_array for pixel in row]
-        )
+            if middle_hold_start is not None and event.direction == 'middle':
+                if (event.action == 'held' and
+                     event.timestamp - middle_hold_start > self.joystick_hold_time):
+                    middle_hold_start = None
+                    return 'undo'
+                elif event.action == 'released':
+                    middle_hold_start = None
+                    return 'brightness'
 
-    def show_board(self):
-        """Display current state of game board on the Sense HAT."""
-        self._fade_to(self._rendered_board(self.board.tiles))
+    def do_action(self, action):
+        """Perform one of the designated player actions 'left', 'right', 'up',
+        'down', 'brightness' (change display brightness), or 'undo'
+        (take back last move).
+        """
+        if action in ['left', 'right', 'up', 'down']:
+            self.player_move(action)
+        elif action == 'brightness':
+            self._hat.low_light = not self._hat.low_light
+        elif action == 'undo':
+            if self._undo_stack:
+                print('\nUndo!', file=sys.stdout)
+                self.board.set_state(self._undo_stack.pop())
+                self.print_score()
+                self.show_board()
+            else:
+                print("\nCan't undo", file=sys.stdout)
+                self._flash(1)
 
     def player_move(self, direction):
         """Perform, animate, and render a complete move in the given direction
@@ -265,9 +293,51 @@ class UI:
         self.board.place_tile()
         self.show_board()
 
+    def game_over(self):
+        """Display end-of-game animations and messages."""
+        self._flash()
+        time.sleep(1)
+        self._fade_dots()
+
+        text_color = TILE_COLORS[np.max(self.board.tiles)]
+        print('\n\nGame over! Final score: {}\n\n'.format(self.board.score),
+              file=sys.stdout)
+        self._hat.show_message('Score: {}'.format(self.board.score),
+            text_colour=text_color, scroll_speed=self.scroll_rate)
+
+        self.show_board()
+
+    def show_board(self):
+        """Display current state of game board on the Sense HAT."""
+        self._fade_to(self._rendered_board(self.board.tiles))
+
     def print_score(self):
         print('Your current score: {}'.format(self.board.score),
               end='\r', file=sys.stdout)
+
+    def _rendered_board(self, tiles):
+        # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
+        # representing the game board's tiles
+
+        dim_x, dim_y = tiles.shape
+        scaled = tiles.repeat(8 / dim_x, axis=0).repeat(8 / dim_y, axis=1)
+        return np.array(
+            [[TILE_COLORS[tile] for tile in row] for row in scaled],
+            dtype=np.uint8)
+
+    def _get_display(self):
+        # Retrieve display from Sense HAT, converted to Numpy 8×8×3
+        # array
+
+        return np.reshape(
+            np.array(self._hat.get_pixels()), (8, 8, 3)
+        ).astype(np.uint8)
+
+    def _set_display(self, pixel_array):
+        # Send 8×8×3 pixel array to Sense HAT's LED matrix
+        self._hat.set_pixels(
+            [tuple(pixel) for row in pixel_array for pixel in row]
+        )
 
     def _animate_shift(self, direction):
         # Visually shift the tiles on the HAT screen in the given
@@ -310,11 +380,6 @@ class UI:
         self._fade_to(faded_display)
         self._fade_to(new_display)
 
-    def _flash(self, times=2):
-        # Briefly flash the screen
-        for _ in range(times * 2):
-            self._fade_to((255, 255, 255) - self._get_display())
-
     def _fade_to(self, new_display):
         # Perform a dissolve-type transition from the current HAT display
         # contents to that of pixel array *new_display*.
@@ -337,75 +402,10 @@ class UI:
             self._hat.set_pixel(*coord, (0, 0, 0))
             time.sleep(self.animation_rate)
 
-    def get_input(self):
-        """Wait for an input event and return it as a string: 'up, 'down',
-        'left', 'right', 'undo', 'brightness'
-        """
-        middle_hold_start = None
-
-        # Purge queue of any accidental joystick inputs made previously
-        # before we wait for a fresh input
-        self._hat.stick.get_events()
-
-        while True:
-            event = self._hat.stick.wait_for_event()
-            if event.action == 'pressed':
-                if event.direction in ['left', 'right', 'up', 'down']:
-                    return event.direction
-                if event.direction == 'middle':
-                    middle_hold_start = time.time()
-
-            if middle_hold_start is not None and event.direction == 'middle':
-                if (event.action == 'held' and
-                     event.timestamp - middle_hold_start > self.joystick_hold_time):
-                    middle_hold_start = None
-                    return 'undo'
-                elif event.action == 'released':
-                    middle_hold_start = None
-                    return 'brightness'
-
-    def main(self):
-        """Perform input/processing/output loop for main game"""
-        while True:
-            self.show_board()
-            while self.board.has_moves():
-                self.do_action(self.get_input())
-            self.game_over()
-            self.get_input()    # Pause for a joystick button press
-            self.new_game()
-
-    def do_action(self, action):
-        """Perform one of the designated player actions 'left', 'right', 'up',
-        'down', 'brightness' (change display brightness), or 'undo'
-        (take back last move).
-        """
-        if action in ['left', 'right', 'up', 'down']:
-            self.player_move(action)
-        elif action == 'brightness':
-            self._hat.low_light = not self._hat.low_light
-        elif action == 'undo':
-            if self._undo_stack:
-                print('\nUndo!', file=sys.stdout)
-                self.board.set_state(self._undo_stack.pop())
-                self.print_score()
-                self.show_board()
-            else:
-                print("\nCan't undo", file=sys.stdout)
-                self._flash(1)
-
-    def game_over(self):
-        """Display end-of-game animations and messages."""
-        self._flash()
-        time.sleep(1)
-        self._fade_dots()
-
-        text_color = TILE_COLORS[np.max(self.board.tiles)]
-        print('\n\nGame over! Final score: {}\n\n'.format(self.board.score),
-              file=sys.stdout)
-        self._hat.show_message('Score: {}'.format(self.board.score),
-            text_colour=text_color, scroll_speed=self.scroll_rate)
-
-        self.show_board()
+    def _flash(self, times=2):
+        # Briefly flash the screen
+        for _ in range(times * 2):
+            self._fade_to((255, 255, 255) - self._get_display())
 
 
 if __name__ == '__main__':
