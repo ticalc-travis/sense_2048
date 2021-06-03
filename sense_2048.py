@@ -140,22 +140,23 @@ class Board:
         )
 
     def get_state(self):
-        """Return an object representing the board and game state that can be
-        restored with *set_state()*.
+        """Return an object that can be later passed to *set_state()* to restore
+        the complete board state to what it was when the call to
+        *get_state()* was made.
         """
         return {
             'tiles': self.tiles,
             'score': self.score,
-            'random': self._random.getstate()
+            'rng': self._random.getstate()
         }
 
     def set_state(self, state):
-        """Restore the internal board/game state with the state object retrieved
-        earlier from *get_state()*.
+        """Restore the board state with a state object retrieved from
+        *get_state()*.
         """
         self._tiles = state['tiles']
         self.score = state['score']
-        self._random.setstate(state['random'])
+        self._random.setstate(state['rng'])
 
 
 class UI:
@@ -194,15 +195,15 @@ class UI:
     def __init__(self, hat):
         """Args:
         hat:  A SenseHat object
-        board:  A Board object
         """
         self._hat = hat
 
-        self.restart()
+        # Initialize game-specific instance attributes
+        self.new_game()
 
-    def restart(self):
+    def new_game(self):
         """Reset the board and start a new game."""
-        self._board = Board()
+        self.board = Board()
         self._undo_stack = collections.deque(maxlen=self.undo_size)
 
     def _rendered_board(self, tiles):
@@ -231,7 +232,7 @@ class UI:
 
     def show_board(self):
         """Display current state of game board on the Sense HAT."""
-        self._fade_to(self._rendered_board(self._board.tiles))
+        self._fade_to(self._rendered_board(self.board.tiles))
 
     def player_move(self, direction):
         """Perform, animate, and render a complete move in the given direction
@@ -239,33 +240,33 @@ class UI:
         placing and displaying a new random one.
         """
         # Store current state in undo history
-        self._undo_stack.append(self._board.get_state())
+        self._undo_stack.append(self.board.get_state())
 
         # Shift board tiles in the requested direction
         self._animate_shift(direction)
-        self._board.shift(direction)
+        self.board.shift(direction)
 
         # Merge any matching tiles, animate if anything changed, and
         # display current score on console
-        orig_tiles = self._board.tiles
-        orig_score = self._board.score
-        self._board.merge(direction)
-        if not np.array_equal(orig_tiles, self._board.tiles):
-            self._animate_changed(orig_tiles, self._board.tiles)
-        if self._board.score != orig_score:
-            self._print_score()
+        orig_tiles = self.board.tiles
+        orig_score = self.board.score
+        self.board.merge(direction)
+        if not np.array_equal(orig_tiles, self.board.tiles):
+            self._animate_changed(orig_tiles, self.board.tiles)
+        if self.board.score != orig_score:
+            self.print_score()
 
         # Shift board again to fill in any leftover gaps
         self._animate_shift(direction)
-        self._board.shift(direction)
+        self.board.shift(direction)
 
         # Finally, end the turn by placing a random tile on the board
         # and fading it in
-        self._board.place_tile()
+        self.board.place_tile()
         self.show_board()
 
-    def _print_score(self):
-        print('Your current score: {}'.format(self._board.score),
+    def print_score(self):
+        print('Your current score: {}'.format(self.board.score),
               end='\r', file=sys.stdout)
 
     def _animate_shift(self, direction):
@@ -367,36 +368,41 @@ class UI:
         """Perform input/processing/output loop for main game"""
         while True:
             self.show_board()
-            while self._board.has_moves():
-                self._handle_input(self.get_input())
+            while self.board.has_moves():
+                self.do_action(self.get_input())
             self.game_over()
-            self.get_input()
-            self.restart()
+            self.get_input()    # Pause for a joystick button press
+            self.new_game()
 
-    def _handle_input(self, input_event):
-        if input_event in ['left', 'right', 'up', 'down']:
-            self.player_move(input_event)
-        elif input_event == 'brightness':
+    def do_action(self, action):
+        """Perform one of the designated player actions 'left', 'right', 'up',
+        'down', 'brightness' (change display brightness), or 'undo'
+        (take back last move).
+        """
+        if action in ['left', 'right', 'up', 'down']:
+            self.player_move(action)
+        elif action == 'brightness':
             self._hat.low_light = not self._hat.low_light
-        elif input_event == 'undo':
+        elif action == 'undo':
             if self._undo_stack:
                 print('\nUndo!', file=sys.stdout)
-                self._board.set_state(self._undo_stack.pop())
-                self._print_score()
+                self.board.set_state(self._undo_stack.pop())
+                self.print_score()
                 self.show_board()
             else:
                 print("\nCan't undo", file=sys.stdout)
                 self._flash(1)
 
     def game_over(self):
+        """Display end-of-game animations and messages."""
         self._flash()
         time.sleep(1)
         self._fade_dots()
 
-        text_color = TILE_COLORS[np.max(self._board.tiles)]
-        print('\n\nGame over! Final score: {}\n\n'.format(self._board.score),
+        text_color = TILE_COLORS[np.max(self.board.tiles)]
+        print('\n\nGame over! Final score: {}\n\n'.format(self.board.score),
               file=sys.stdout)
-        self._hat.show_message('Score: {}'.format(self._board.score),
+        self._hat.show_message('Score: {}'.format(self.board.score),
             text_colour=text_color, scroll_speed=self.scroll_rate)
 
         self.show_board()
