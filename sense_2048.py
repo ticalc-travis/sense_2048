@@ -12,32 +12,27 @@ from sense_hat import sense_hat
 TILE_EMPTY = 0
 
 
-TILE_COLORS = collections.defaultdict(
-    # Placeholder for nonexistent tile (should never appear):
-    lambda: (255, 127, 127),
+TILE_COLORS = {
+    TILE_EMPTY: [(0, 0, 0), None],
+    2: [(255, 255, 255), (127, 127, 127)],
+    4: [(255, 255, 0), (127, 127, 0)],
+    8: [(255, 127, 0), None],
+    16: [(255, 0, 0), None],
+    32: [(255, 0, 191), None],
+    64: [(127, 0, 255), None],
+    128: [(0, 0, 191), None],
+    256: [(0, 127, 255), None],
+    512: [(0, 255, 255), None],
+    1024: [(0, 255, 0), None],
 
-    {
-        TILE_EMPTY: (0, 0, 0),
-        2: (255, 255, 255),
-        4: (255, 255, 0),
-        8: (255, 127, 0),
-        16: (255, 0, 0),
-        32: (255, 0, 191),
-        64: (127, 0, 255),
-        128: (0, 0, 191),
-        256: (0, 127, 255),
-        512: (0, 255, 255),
-        1024: (0, 255, 0),
-        2048: (0, 95, 0),
-
-        4096: (0, 95, 95),
-        8192: (0, 0, 95),
-        16384: (95, 0, 95),
-        32768: (95, 0, 0),
-        65536: (95, 95, 0),
-        131072: (95, 95, 95),
-    }
-)
+    2048: [(0, 95, 0), (255, 255, 255)],
+    4096: [(0, 95, 95), (255, 255, 255)],
+    8192: [(0, 0, 95), (255, 255, 255)],
+    16384: [(95, 0, 95), (255, 255, 255)],
+    32768: [(95, 0, 0), (255, 255, 255)],
+    65536: [(95, 95, 0), (255, 255, 255)],
+    131072: [(95, 95, 95), (255, 255, 255)],
+}
 
 
 ROTATIONS = {
@@ -46,6 +41,50 @@ ROTATIONS = {
     'right': 2,
     'down': 3,
 }
+
+
+def interpolate_color(color_x, color_y, position):
+    return np.rint(
+        color_x * (1 - position) + color_y * position
+    ).astype(np.uint8)
+
+
+class TileColor:
+
+    dynamic_steps = 20
+
+    def __init__(self, color_def=TILE_COLORS):
+        self._colors = {}
+        self._init_colors(color_def)
+        self._pos_gen = self._pos_gen()
+
+    def _init_colors(self, color_def):
+        for tile, colors in color_def.items():
+            color_x, color_y = colors
+            if color_y is None:
+                color_y = color_x
+            self._colors[tile] = {
+                'x': np.array(color_x),
+                'y': np.array(color_y),
+            }
+
+    def _pos_gen(self):
+        while True:
+            for step in range(self.dynamic_steps):
+                yield step / self.dynamic_steps
+            for step in range(self.dynamic_steps, 0, -1):
+                yield step / self.dynamic_steps
+
+    def static(self, tile):
+        return self._colors[tile]['x']
+
+    def dynamic(self, tile):
+        colors = self._colors[tile]
+        position = next(self._pos_gen)
+        return interpolate_color(colors['x'], colors['y'], position)
+
+
+tile_color = TileColor()
 
 
 class Board:
@@ -64,7 +103,7 @@ class Board:
 
     def __init__(self, size=(4, 4), new_tile_vals=(2, 4)):
         """Args:
-        
+
         size:  Tuple representing the board dimensions (x,y)
 
         new_tile_vals:  A list of possible tile values that will be
@@ -212,7 +251,7 @@ class UI:
         dim_x, dim_y = tiles.shape
         scaled = tiles.repeat(8 / dim_x, axis=0).repeat(8 / dim_y, axis=1)
         return np.array(
-            [[TILE_COLORS[tile] for tile in row] for row in scaled],
+            [[tile_color.dynamic(tile) for tile in row] for row in scaled],
             dtype=np.uint8)
 
     def _get_display(self):
@@ -229,9 +268,13 @@ class UI:
             [tuple(pixel) for row in pixel_array for pixel in row]
         )
 
-    def show_board(self):
+    def show_board(self, fade=True):
         """Display current state of game board on the Sense HAT."""
-        self._fade_to(self._rendered_board(self._board.tiles))
+        rendered_board = self._rendered_board(self._board.tiles)
+        if fade:
+            self._fade_to(rendered_board)
+        else:
+            self._set_display(rendered_board)
 
     def player_move(self, direction):
         """Perform, animate, and render a complete move in the given direction
@@ -282,7 +325,7 @@ class UI:
             rotated_display = np.rot90(display.copy(), ROTATIONS[direction])
             for row in rotated_display:
                 for j in range(len(row) - 1):
-                    if np.array_equal(row[j], TILE_COLORS[TILE_EMPTY]):
+                    if np.array_equal(row[j], tile_color.dynamic(TILE_EMPTY)):
                         row[[j, j+1]] = row[[j+1, j]]
             new_display = np.rot90(rotated_display, -ROTATIONS[direction])
 
@@ -321,10 +364,8 @@ class UI:
         orig_display = self._get_display()
         for step in range(self.fade_animation_steps):
             new_display_opacity = (step + 1) / self.fade_animation_steps
-            display = np.rint(
-                orig_display * (1 - new_display_opacity)
-                 + new_display * new_display_opacity
-            ).astype(np.uint8)
+            display = interpolate_color(
+                orig_display, new_display, new_display_opacity)
             self._set_display(display)
             time.sleep(self.animation_rate)
 
@@ -347,21 +388,25 @@ class UI:
         self._hat.stick.get_events()
 
         while True:
-            event = self._hat.stick.wait_for_event()
-            if event.action == 'pressed':
-                if event.direction in ['left', 'right', 'up', 'down']:
-                    return event.direction
-                if event.direction == 'middle':
-                    middle_hold_start = time.time()
+            events = self._hat.stick.get_events()
+            for event in events:
+                if event.action == 'pressed':
+                    if event.direction in ['left', 'right', 'up', 'down']:
+                        return event.direction
+                    if event.direction == 'middle':
+                        middle_hold_start = time.time()
 
-            if middle_hold_start is not None and event.direction == 'middle':
-                if (event.action == 'held' and
-                     event.timestamp - middle_hold_start > self.joystick_hold_time):
-                    middle_hold_start = None
-                    return 'undo'
-                elif event.action == 'released':
-                    middle_hold_start = None
-                    return 'brightness'
+                if middle_hold_start is not None and event.direction == 'middle':
+                    if (event.action == 'held' and
+                         event.timestamp - middle_hold_start > self.joystick_hold_time):
+                        middle_hold_start = None
+                        return 'undo'
+                    elif event.action == 'released':
+                        middle_hold_start = None
+                        return 'brightness'
+
+            self.show_board(fade=False)
+            time.sleep(self.animation_rate)
 
     def main(self):
         """Perform input/processing/output loop for main game"""
@@ -393,7 +438,7 @@ class UI:
         time.sleep(1)
         self._fade_dots()
 
-        text_color = TILE_COLORS[np.max(self._board.tiles)]
+        text_color = tile_color.static(np.max(self._board.tiles))
         print('\n\nGame over! Final score: {}\n\n'.format(self._board.score),
               file=sys.stdout)
         self._hat.show_message('Score: {}'.format(self._board.score),
