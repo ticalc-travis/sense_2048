@@ -3,7 +3,6 @@
 import collections
 import random
 import time
-import sys
 
 import numpy as np
 from sense_hat import sense_hat
@@ -254,12 +253,12 @@ class UI:
             self._hat.low_light = not self._hat.low_light
         elif action == 'undo':
             if self._undo_stack:
-                print('\nUndo!', file=sys.stdout)
+                print('\nUndo!')
                 self.board.set_state(self._undo_stack.pop())
                 self.print_score()
                 self.show_board()
             else:
-                print("\nCan't undo", file=sys.stdout)
+                print("\nCan't undo")
                 self._flash(1)
 
     def player_move(self, direction):
@@ -300,8 +299,7 @@ class UI:
         self._fade_dots()
 
         text_color = TILE_COLORS[np.max(self.board.tiles)]
-        print('\n\nGame over! Final score: {}\n\n'.format(self.board.score),
-              file=sys.stdout)
+        print('\n\nGame over! Final score: {}\n\n'.format(self.board.score))
         self._hat.show_message('Score: {}'.format(self.board.score),
             text_colour=text_color, scroll_speed=self.scroll_rate)
 
@@ -313,7 +311,7 @@ class UI:
 
     def print_score(self):
         print('Your current score: {}'.format(self.board.score),
-              end='\r', file=sys.stdout)
+              end='\r')
 
     def _rendered_board(self, tiles):
         # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
