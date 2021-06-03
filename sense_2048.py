@@ -51,12 +51,13 @@ def interpolate_color(color_x, color_y, position):
 
 class TileColor:
 
-    dynamic_steps = 20
+    dynamic_steps = 60
 
     def __init__(self, color_def=TILE_COLORS):
         self._colors = {}
         self._init_colors(color_def)
-        self._pos_gen = self._pos_gen()
+        self._step_gen = self._step_gen_factory()
+        self._curr_step = next(self._step_gen)
 
     def _init_colors(self, color_def):
         for tile, colors in color_def.items():
@@ -68,20 +69,24 @@ class TileColor:
                 'y': np.array(color_y),
             }
 
-    def _pos_gen(self):
+    # TODO: A simple formula would likely suffice instead of a
+    # full-blown generator, but I don't have time to figure it out now.
+    def _step_gen_factory(self):
         while True:
             for step in range(self.dynamic_steps):
                 yield step / self.dynamic_steps
             for step in range(self.dynamic_steps, 0, -1):
                 yield step / self.dynamic_steps
 
+    def advance_frame(self):
+        self._curr_step = next(self._step_gen)
+
     def static(self, tile):
         return self._colors[tile]['x']
 
     def dynamic(self, tile):
         colors = self._colors[tile]
-        position = next(self._pos_gen)
-        return interpolate_color(colors['x'], colors['y'], position)
+        return interpolate_color(colors['x'], colors['y'], self._curr_step)
 
 
 tile_color = TileColor()
@@ -334,6 +339,7 @@ class UI:
                 break
 
             # Render frame to screen
+            tile_color.advance_frame()
             self._set_display(new_display)
             display = new_display
             time.sleep(self.animation_rate)
@@ -405,6 +411,7 @@ class UI:
                         middle_hold_start = None
                         return 'brightness'
 
+            tile_color.advance_frame()
             self.show_board(fade=False)
             time.sleep(self.animation_rate)
 
