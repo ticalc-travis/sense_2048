@@ -97,6 +97,7 @@ class Board:
         self._random = random.Random()
 
         self.place_tile()
+        self.place_tile()
 
     @property
     def tiles(self):
@@ -285,8 +286,10 @@ class UI:
         'up', 'down', 'left', or 'right', shifting and merging tiles and
         placing and displaying a new random one.
         """
-        # Store current state in undo history
-        self._undo_stack.append(self.board.get_state())
+        # Save current states for undo and to check afterward if move
+        # was successful
+        undo_state = self.board.get_state()
+        orig_tiles = self.board.tiles
 
         # Shift board tiles in the requested direction
         self._animate_shift(direction)
@@ -294,11 +297,11 @@ class UI:
 
         # Merge any matching tiles, animate if anything changed, and
         # display current score on console
-        orig_tiles = self.board.tiles
+        unmerged_tiles = self.board.tiles
         orig_score = self.board.score
         self.board.merge(direction)
-        if not np.array_equal(orig_tiles, self.board.tiles):
-            self._animate_changed(orig_tiles, self.board.tiles)
+        if not np.array_equal(unmerged_tiles, self.board.tiles):
+            self._animate_changed(unmerged_tiles, self.board.tiles)
         if self.board.score != orig_score:
             self.print_score()
 
@@ -306,10 +309,16 @@ class UI:
         self._animate_shift(direction)
         self.board.shift(direction)
 
-        # Finally, end the turn by placing a random tile on the board
-        # and fading it in
-        self.board.place_tile()
-        self.show_board()
+        # Check if anything actually changed.  If so, end the turn by
+        # placing a random tile on the board and fading it in and
+        # pushing the last board state to the undo stack.  Otherwise,
+        # perform an ”error” flash and abort.
+        if not np.array_equal(orig_tiles, self.board.tiles):
+            self._undo_stack.append(undo_state)
+            self.board.place_tile()
+            self.show_board()
+        else:
+            self._flash(1)
 
     def game_over(self):
         """Display end-of-game animations and messages."""
