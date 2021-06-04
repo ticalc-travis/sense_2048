@@ -63,7 +63,7 @@ class Board:
 
     def __init__(self, size=(4, 4), new_tile_vals=(2, 4)):
         """Args:
-        
+
         size:  Tuple representing the board dimensions (x,y)
 
         new_tile_vals:  A list of possible tile values that will be
@@ -235,10 +235,10 @@ class UI:
 
             if middle_hold_start is not None and event.direction == 'middle':
                 if (event.action == 'held' and
-                     event.timestamp - middle_hold_start > self.joystick_hold_time):
+                        event.timestamp - middle_hold_start > self.joystick_hold_time):
                     middle_hold_start = None
                     return 'undo'
-                elif event.action == 'released':
+                if event.action == 'released':
                     middle_hold_start = None
                     return 'brightness'
 
@@ -300,7 +300,8 @@ class UI:
 
         text_color = TILE_COLORS[np.max(self.board.tiles)]
         print('\n\nGame over! Final score: {}\n\n'.format(self.board.score))
-        self._hat.show_message('Score: {}'.format(self.board.score),
+        self._hat.show_message(
+            'Score: {}'.format(self.board.score),
             text_colour=text_color, scroll_speed=self.scroll_rate)
 
         self.show_board()
@@ -310,10 +311,12 @@ class UI:
         self._fade_to(self._rendered_board(self.board.tiles))
 
     def print_score(self):
+        """Print current player score on console."""
         print('Your current score: {}'.format(self.board.score),
               end='\r')
 
-    def _rendered_board(self, tiles):
+    @staticmethod
+    def _rendered_board(tiles):
         # Return a 3D array of pixels (8 rows, 8 cols, 3 RGB components)
         # representing the game board's tiles
 
@@ -369,7 +372,6 @@ class UI:
         # the on-screen tiles that have changed between the arrays, then
         # fade in the new tiles from new_tiles.
 
-        old_display = self._rendered_board(old_tiles)
         faded_display = self._rendered_board(
             (old_tiles == new_tiles) * old_tiles
         )
@@ -387,7 +389,7 @@ class UI:
             new_display_opacity = (step + 1) / self.fade_animation_steps
             display = np.rint(
                 orig_display * (1 - new_display_opacity)
-                 + new_display * new_display_opacity
+                + new_display * new_display_opacity
             ).astype(np.uint8)
             self._set_display(display)
             time.sleep(self.animation_rate)
@@ -406,7 +408,8 @@ class UI:
             self._fade_to((255, 255, 255) - self._get_display())
 
 
-if __name__ == '__main__':
+def main():
+    """Launch the 2048 game on the Sense HAT."""
     hat = sense_hat.SenseHat()
     ui = UI(hat)
     try:
@@ -414,3 +417,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         hat.clear()
         print()
+
+
+if __name__ == '__main__':
+    main()
