@@ -29,7 +29,6 @@ from sense_hat import sense_hat
 
 TILE_EMPTY = 0
 
-
 TILE_COLORS = collections.defaultdict(
     # Placeholder for nonexistent tile (should never appear):
     lambda: (255, 127, 127),
@@ -57,13 +56,27 @@ TILE_COLORS = collections.defaultdict(
     }
 )
 
-
 ROTATIONS = {
     'left': 0,
     'up': 1,
     'right': 2,
     'down': 3,
 }
+
+PROGRAM_GREETING = """
+Welcome to Sense 2048!  Slide the tiles around the board using the Sense
+HAT joystick.  When same-colored tiles bump into each other they will
+form a new color tile.  Combine as many tiles as you can!
+
+You can also:
+
+* press and release the middle of the joystick to change display
+  brightness.
+
+* press and hold the middle of the joystick for a moment to take back
+  your last move.  You may undo up to {undo_size} consecutive moves.
+
+"""
 
 
 class Board:
@@ -440,6 +453,7 @@ def main():
     """Launch the 2048 game on the Sense HAT."""
     hat = sense_hat.SenseHat()
     ui = UI(hat)
+    print(PROGRAM_GREETING.format(undo_size=ui.undo_size))
     try:
         ui.main()
     except KeyboardInterrupt:
