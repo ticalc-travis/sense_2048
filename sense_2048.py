@@ -339,10 +339,12 @@ class UI:
         time.sleep(1)
         self._fade_dots()
 
-        text_color = TILE_COLORS[np.max(self.board.tiles)]
-        print('\n\nGame over! Final score: {}\n\n'.format(self.board.score))
+        best_tile = np.max(self.board.tiles)
+        text_color = TILE_COLORS[best_tile]
+        print('\n\nGame over!\nFinal score: {}\nHighest tile: {}\n\n'.format(
+            self.board.score, best_tile))
         self._hat.show_message(
-            'Score: {}'.format(self.board.score),
+            'Best tile: {}  Score: {}'.format(best_tile, self.board.score),
             text_colour=text_color, scroll_speed=self.scroll_rate)
 
         self.show_board()
