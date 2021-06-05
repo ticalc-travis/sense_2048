@@ -340,12 +340,23 @@ class UI:
         self._fade_dots()
 
         best_tile = np.max(self.board.tiles)
+        is_winner = best_tile >= 2048
+
+        console_msg = '\n\n{}\nHighest tile: {}\nFinal score: {}\n\n'.format(
+            'You won!' if is_winner else 'Game over!',
+            best_tile,
+            self.board.score,
+        )
+        print(console_msg)
+
+        hat_msg = '{}Best tile: {}  Score: {}'.format(
+            'You won!  ' if is_winner else '',
+            best_tile,
+            self.board.score,
+        )
         text_color = TILE_COLORS[best_tile]
-        print('\n\nGame over!\nFinal score: {}\nHighest tile: {}\n\n'.format(
-            self.board.score, best_tile))
         self._hat.show_message(
-            'Best tile: {}  Score: {}'.format(best_tile, self.board.score),
-            text_colour=text_color, scroll_speed=self.scroll_rate)
+            hat_msg, text_colour=text_color, scroll_speed=self.scroll_rate)
 
         self.show_board()
 
