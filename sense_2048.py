@@ -30,7 +30,8 @@ from sense_hat import sense_hat
 TILE_EMPTY = 0
 
 TILE_COLORS = collections.defaultdict(
-    # Placeholder for nonexistent tile (should never appear):
+
+    # Placeholder for undefined tile (should never appear):
     lambda: (255, 127, 127),
 
     {
